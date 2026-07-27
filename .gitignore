@@ -1,0 +1,28 @@
+# This file tells Git which files and folders to IGNORE when tracking
+# changes. Anything listed here will NOT be saved in the project's
+# version history. This is important for security and cleanliness.
+
+# --- PROJECT CONTEXT ---
+# This is the gitignore for a macOS backup/restore toolkit. We need to
+# exclude backup folders because they contain sensitive SSH private keys
+# that should never be committed to version control.
+
+# Ignore all backup snapshot folders. The pattern "Mac_Backup_*/" matches
+# any folder whose name starts with "Mac_Backup_" followed by anything
+# (like a date). These folders contain SSH private keys — secret files
+# that let your computer authenticate with servers like GitHub. If these
+# were committed to a public repository, anyone could steal your identity
+# online. The trailing slash means "only match directories, not files."
+Mac_Backup_*/
+
+# Ignore all .bak files. These are backup copies of configuration files
+# (like .zshrc.bak) that are created during the backup process. They
+# are working files that don't belong in version control.
+*.bak
+
+# Ignore macOS system files. ".DS_Store" is a hidden file that macOS
+# automatically creates in every folder you open in Finder. It stores
+# display settings like icon positions and folder views. It has nothing
+# to do with the project and clutters up the repository with unnecessary
+# changes every time someone opens the folder on a Mac.
+.DS_Store
