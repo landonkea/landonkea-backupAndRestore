@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# IMPORTANT: This workflow performs STATIC ANALYSIS ONLY.
+# backup.sh / restore.sh must NEVER be executed here — they operate on a
+# real machine's filesystem and SSH keys. Running them on a CI runner
+# would be meaningless at best and harmful at worst.
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check (bash -n, no execution)
+        run: bash -n backup.sh restore.sh
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          check_together: 'yes'
