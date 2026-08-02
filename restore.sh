@@ -21,8 +21,9 @@
 # independent and can fail or be skipped on its own (e.g. no Brewfile
 # found) — separating them into functions makes each step's success
 # path and fallback path easy to follow on its own.
-# HOW: No commands, flags, or paths were changed from the original
-# script — this is a structural reorganization only.
+# HOW: Originally a structural reorganization only; since then the
+# Homebrew install URL was fixed (it pointed at a broken host) and Ruby
+# gem restoration was added so gems round-trip like npm/pip packages.
 
 # =====================================================================
 # SECTION 1: INSTALL HOMEBREW IF IT IS MISSING
@@ -51,7 +52,7 @@ install_homebrew_if_missing() {
     if ! command -v brew &> /dev/null; then
         echo "🍺 Homebrew not found. Installing Homebrew..."
 
-        /bin/bash -c "$(curl -fsSL https://githubusercontent.com)"
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
         if [[ "$(uname -m)" == "arm64" ]]; then
             eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -103,12 +104,19 @@ restore_homebrew_packages() {
 # one per line from the file and passes them as arguments to
 # "npm install -g" (global install). "pip install -r requirements.txt"
 # reads the "package==version" lines pip wrote during backup and
-# reinstalls those exact versions.
+# reinstalls those exact versions. Ruby gems are handled a little
+# differently: backup.sh saves "gem list" output, and each line of that
+# looks like "gemname (1.2.3, 1.1.0)" rather than a plain name — so we
+# use "awk '{print $1}'" to grab just the first field (the gem name) off
+# each line before handing the names to "xargs gem install". This
+# installs the latest available version of each gem rather than pinning
+# the exact backed-up version, since "gem list"'s default output isn't a
+# pip-style pinned-version format.
 # WHY: Restoring the same globally-installed libraries (and, for
 # Python, the exact same versions) avoids compatibility surprises on
-# the new machine. Ruby gems were listed during backup for reference
-# but were never auto-reinstalled here — that matches the original
-# script's behavior and is left unchanged.
+# the new machine. Ruby gems are restored too, by name, so they round
+# trip like the other two languages instead of only being listed for
+# reference.
 restore_language_packages() {
     echo "🌐 Restoring language packages..."
 
@@ -120,6 +128,11 @@ restore_language_packages() {
     if [ -f "requirements.txt" ] && command -v pip &> /dev/null; then
         echo "Installing Python packages..."
         pip install -r requirements.txt
+    fi
+
+    if [ -f "rubygems.txt" ] && command -v gem &> /dev/null; then
+        echo "Installing Ruby gems..."
+        awk '{print $1}' rubygems.txt | xargs gem install
     fi
 }
 

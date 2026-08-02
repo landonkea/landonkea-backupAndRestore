@@ -56,16 +56,16 @@ setup_backup_dir() {
 # developer tools and apps from the terminal instead of downloading them
 # from a website. Saving this list means everything can be reinstalled
 # later with one command (see restore.sh).
-# HOW: cd into the backup folder so brew writes the Brewfile there ("||
-# exit" stops the whole script immediately if that cd fails, so we never
-# accidentally write backup files into the wrong location). "brew bundle
-# dump --describe --force" writes a Brewfile listing every installed
-# app/tool; --describe adds helpful comments next to each name, --force
-# overwrites the file if it already exists without asking.
+# HOW: "brew bundle dump --describe --force --file=..." writes a Brewfile
+# listing every installed app/tool directly to an absolute path inside
+# BACKUP_DIR; --describe adds helpful comments next to each name, --force
+# overwrites the file if it already exists without asking. Using --file
+# with an absolute path means this step never has to change the script's
+# working directory, so a failure here can't take down later steps that
+# don't depend on that directory being cwd.
 backup_homebrew_packages() {
     echo "📦 Backing up Homebrew packages..."
-    cd "$BACKUP_DIR" || exit
-    brew bundle dump --describe --force
+    brew bundle dump --describe --force --file="$BACKUP_DIR/Brewfile"
 }
 
 # =====================================================================
@@ -92,9 +92,9 @@ backup_homebrew_packages() {
 backup_language_packages() {
     echo "🌐 Backing up language packages..."
 
-    npm list -g --depth=0 > global-npm-packages.txt 2>/dev/null || echo "Node/NPM not found, skipping."
-    pip list --format=freeze > requirements.txt 2>/dev/null || echo "Python/PIP not found, skipping."
-    gem list > rubygems.txt 2>/dev/null || echo "Ruby/Gems not found, skipping."
+    npm list -g --depth=0 > "$BACKUP_DIR/global-npm-packages.txt" 2>/dev/null || echo "Node/NPM not found, skipping."
+    pip list --format=freeze > "$BACKUP_DIR/requirements.txt" 2>/dev/null || echo "Python/PIP not found, skipping."
+    gem list > "$BACKUP_DIR/rubygems.txt" 2>/dev/null || echo "Ruby/Gems not found, skipping."
 }
 
 # =====================================================================
