@@ -4,12 +4,12 @@ A simple macOS developer backup and restore toolkit. Save everything you've inst
 
 ## What It Backs Up
 
-- **Homebrew packages** — command-line tools and desktop apps installed via Homebrew
-- **Global npm packages** — JavaScript libraries available system-wide
-- **Python packages** — libraries installed via pip
-- **Ruby gems** — libraries installed via the gem system
-- **Dotfiles** — `.zshrc`, `.bash_profile`, `.gitconfig`
-- **SSH keys** — authentication keys for GitHub, servers, etc.
+- **Homebrew packages**: command-line tools and desktop apps installed via Homebrew
+- **Global npm packages**: JavaScript libraries available system-wide
+- **Python packages**: libraries installed via pip
+- **Ruby gems**: libraries installed via the gem system
+- **Dotfiles**: `.zshrc`, `.bash_profile`, `.gitconfig`
+- **SSH keys**: authentication keys for GitHub, servers, etc.
 
 ## How to Use
 

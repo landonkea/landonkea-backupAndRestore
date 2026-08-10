@@ -3,12 +3,12 @@
 # Bash is the default command-line program on macOS that reads and executes
 # shell scripts like this one. Without this line, the system wouldn't know
 # how to interpret the commands below. The #! at the start is called a
-# "shebang" — it's a special marker for the operating system.
+# "shebang", it's a special marker for the operating system.
 
 # --- PROJECT CONTEXT ---
 # This file is the BACKUP half of a macOS developer backup/restore toolkit.
 # Its job is to collect all the things a developer has installed and configured
-# on their Mac — apps, coding language packages, and secret SSH keys — and
+# on their Mac, apps, coding language packages, and secret SSH keys, and
 # save them into one folder so they can be restored on a new Mac later.
 #
 # --- STRUCTURE ---
@@ -16,12 +16,12 @@
 # functions (one per backup category), plus a main() function at the
 # bottom that calls them in order.
 # WHY: Splitting the work into named functions makes each step easy to
-# read, test, and reason about in isolation — e.g. you can tell exactly
+# read, test, and reason about in isolation, e.g. you can tell exactly
 # what "backup_ssh_keys" does without scrolling through unrelated code
 # for Homebrew or npm. It also means adding or removing a backup step
 # later is a one-line change in main(), not a rewrite of a giant block.
 # HOW: Every function below does exactly one job and is named after that
-# job. None of the actual commands, flags, or file paths were changed —
+# job. None of the actual commands, flags, or file paths were changed,
 # this is a structural reorganization only, not a behavior change.
 
 # =====================================================================
@@ -29,7 +29,7 @@
 # =====================================================================
 
 # WHAT: Builds the backup folder path and creates it.
-# HOW: BACKUP_DIR is a variable — a labeled box where we store a value,
+# HOW: BACKUP_DIR is a variable, a labeled box where we store a value,
 # here a full file path like "/Users/yourname/Mac_Backup_2026-07-26".
 # The $(date +%Y-%m-%d) part runs a date command that outputs today's
 # date in year-month-day format, so each backup gets its own uniquely
@@ -52,7 +52,7 @@ setup_backup_dir() {
 # =====================================================================
 
 # WHAT: Saves a list of every Homebrew-installed app/tool as a Brewfile.
-# WHY: Homebrew is a free package manager for macOS — it lets you install
+# WHY: Homebrew is a free package manager for macOS, it lets you install
 # developer tools and apps from the terminal instead of downloading them
 # from a website. Saving this list means everything can be reinstalled
 # later with one command (see restore.sh).
@@ -104,16 +104,16 @@ backup_language_packages() {
 # with a dot (.) which makes them invisible in Finder by default. They
 # control things like how your terminal looks, what Git knows about you,
 # and what shell shortcuts you've set up. Losing these on a new Mac means
-# hours of re-configuring — so we back them up.
+# hours of re-configuring, so we back them up.
 
 # WHAT: Copies .zshrc, .bash_profile, and .gitconfig into dotfiles/.
 # HOW: Creates a "dotfiles" subfolder inside BACKUP_DIR to keep these
 # files organized in one place, then copies each config file from $HOME
 # with a ".bak" suffix. Each copy's "2>/dev/null" hides the error if that
 # particular file doesn't exist on this machine (e.g. a user with no
-# .bash_profile) — this is expected and not a failure.
+# .bash_profile), this is expected and not a failure.
 # WHY: These files carry personal shell/editor/Git configuration that is
-# tedious to recreate by hand — restoring them saves hours of setup.
+# tedious to recreate by hand, restoring them saves hours of setup.
 backup_dotfiles() {
     echo "🔒 Copying configuration files..."
     mkdir -p "$BACKUP_DIR/dotfiles"
@@ -136,15 +136,15 @@ backup_dotfiles() {
 # WHAT the safety mechanism actually is: this script copies the real
 # SSH private key out of ~/.ssh into the dated backup folder
 # ($BACKUP_DIR, e.g. "Mac_Backup_2026-07-26/"). That backup folder is
-# NOT itself protected by anything in this script — the protection lives
+# NOT itself protected by anything in this script, the protection lives
 # one layer up, in this repo's .gitignore, which excludes every folder
 # matching "Mac_Backup_*/" (and "*.bak" files) from version control.
 # HOW it holds together: as long as (a) this script keeps writing backups
 # under the "$HOME/Mac_Backup_<date>" naming pattern, and (b) .gitignore
 # keeps the "Mac_Backup_*/" pattern intact, a real private key can never
 # be staged or committed by an ordinary `git add`/`git commit` from
-# inside this repo — git will treat the whole folder as ignored.
-# WHY this matters: SSH private keys are bearer secrets — anyone who
+# inside this repo, git will treat the whole folder as ignored.
+# WHY this matters: SSH private keys are bearer secrets, anyone who
 # gets a copy can impersonate you to GitHub/servers with no further
 # password needed. Committing one to a public repo, even briefly, means
 # treating it as compromised and rotating it. The .gitignore rule is the
@@ -160,7 +160,7 @@ backup_ssh_keys() {
         echo "🔑 Copying SSH keys..."
 
         # Copies the entire .ssh folder (and everything inside it) into the
-        # backup. The -R flag means "recursive" — copy the folder AND all
+        # backup. The -R flag means "recursive", copy the folder AND all
         # its contents. This is a critical backup because losing SSH keys
         # means losing secure access to your GitHub account, servers, etc.
         cp -R "$HOME/.ssh" "$BACKUP_DIR/dotfiles/ssh_backup"
@@ -168,7 +168,7 @@ backup_ssh_keys() {
 }
 
 # =====================================================================
-# DONE — TELL THE USER WHAT TO DO NEXT
+# DONE, TELL THE USER WHAT TO DO NEXT
 # =====================================================================
 
 # WHAT: Prints the final success message and next-step reminder.
@@ -181,7 +181,7 @@ print_backup_complete() {
 }
 
 # =====================================================================
-# MAIN — RUN EVERY BACKUP STEP IN ORDER
+# MAIN, RUN EVERY BACKUP STEP IN ORDER
 # =====================================================================
 # WHAT: Calls each single-purpose function above in the same order the
 # original script ran its steps, so the final behavior is identical.

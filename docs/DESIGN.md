@@ -1,4 +1,4 @@
-# landonkea-backupAndRestore — Design & Workflow
+# landonkea-backupAndRestore - Design & Workflow
 
 ## High-Level Overview
 

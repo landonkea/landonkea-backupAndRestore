@@ -1,6 +1,6 @@
 #!/bin/bash
 # This line tells the system to use the Bash shell to run this script.
-# The #! at the start is called a "shebang" — it's a special marker that
+# The #! at the start is called a "shebang", it's a special marker that
 # tells the operating system which program should interpret the commands
 # below. Without it, the system might try to run the script with the
 # wrong interpreter and fail. Bash is macOS's default command-line shell.
@@ -10,7 +10,7 @@
 # Its job is to take a backup folder created by backup.sh and use it to
 # reinstall all the apps, coding libraries, and configuration files on a
 # fresh Mac. You would run this script from inside the backup folder on
-# your new computer — every relative path below (Brewfile,
+# your new computer, every relative path below (Brewfile,
 # global-npm-packages.txt, dotfiles/...) is read relative to the current
 # working directory for that reason.
 #
@@ -19,7 +19,7 @@
 # functions plus a main() at the bottom that runs them in order.
 # WHY: Each restore step (Homebrew, language packages, dotfiles/SSH) is
 # independent and can fail or be skipped on its own (e.g. no Brewfile
-# found) — separating them into functions makes each step's success
+# found), separating them into functions makes each step's success
 # path and fallback path easy to follow on its own.
 # HOW: Originally a structural reorganization only; since then the
 # Homebrew install URL was fixed (it pointed at a broken host) and Ruby
@@ -37,7 +37,7 @@
 # it's on the PATH for Apple Silicon Macs.
 # HOW: "command -v brew" looks up whether a program called "brew"
 # exists; "&> /dev/null" hides all output (both regular output and
-# errors) so the terminal stays clean. The "!" means "if NOT" — so the
+# errors) so the terminal stays clean. The "!" means "if NOT", so the
 # install block only runs when Homebrew is missing. The installer is
 # fetched with curl ("-f" fail silently on HTTP errors, "-s" silent/no
 # progress bar, "-S" still show errors even in silent mode, "-L" follow
@@ -67,11 +67,11 @@ install_homebrew_if_missing() {
 # =====================================================================
 # A "Brewfile" is a text file that lists every app and tool that was
 # backed up by backup.sh. "Brew bundle" reads this file and installs
-# everything in it — both command-line tools and GUI apps (called "casks").
+# everything in it, both command-line tools and GUI apps (called "casks").
 
 # WHAT: Reinstalls every Homebrew app/tool listed in the backed-up Brewfile.
 # HOW: "-f" checks whether a regular file called "Brewfile" exists in the
-# current directory — you must run this script from inside the backup
+# current directory, you must run this script from inside the backup
 # folder for it to be found. If present, "brew bundle" reads it and
 # installs everything listed. If absent, we warn instead of failing
 # silently, since a missing Brewfile usually means the script was run
@@ -99,14 +99,14 @@ restore_homebrew_packages() {
 # lists backup.sh saved.
 # HOW: Each "if" does two checks joined with "&&" (both must be true):
 # does the backed-up list file exist, AND is the package manager
-# installed? If either is false, that block is skipped silently — no
+# installed? If either is false, that block is skipped silently, no
 # errors, no noise. "xargs npm install -g < file" reads package names
 # one per line from the file and passes them as arguments to
 # "npm install -g" (global install). "pip install -r requirements.txt"
 # reads the "package==version" lines pip wrote during backup and
 # reinstalls those exact versions. Ruby gems are handled a little
 # differently: backup.sh saves "gem list" output, and each line of that
-# looks like "gemname (1.2.3, 1.1.0)" rather than a plain name — so we
+# looks like "gemname (1.2.3, 1.1.0)" rather than a plain name, so we
 # use "awk '{print $1}'" to grab just the first field (the gem name) off
 # each line before handing the names to "xargs gem install". This
 # installs the latest available version of each gem rather than pinning
@@ -145,7 +145,7 @@ restore_language_packages() {
 
 # WHAT: Copies .zshrc, .bash_profile, and .gitconfig back from the
 # backup into $HOME.
-# HOW: Each line uses the pattern "[ condition ] && action" — "if the
+# HOW: Each line uses the pattern "[ condition ] && action", "if the
 # condition is true, then do the action." Specifically: does
 # "dotfiles/<name>.bak" exist in the backup? If yes, copy it back to
 # "$HOME/<name>". This is safer than always copying because the backup
@@ -175,7 +175,7 @@ restore_dotfiles() {
 # HOW the safety check works: "-d dotfiles/ssh_backup" only proceeds if
 # that folder exists, so a backup without SSH keys can't cause an error
 # copying nothing. After copying, "chmod 700 ~/.ssh" restricts the
-# folder to owner-only access (rwx for you, nothing for anyone else —
+# folder to owner-only access (rwx for you, nothing for anyone else,
 # 4+2+1=7), and "chmod 600 ~/.ssh/*" restricts every individual key file
 # to owner read/write only (4+2=6, nothing for group or everyone). SSH
 # actively refuses to use keys that are readable by other users, so
@@ -183,15 +183,15 @@ restore_dotfiles() {
 # WHY this matters: this is the point where a real private key is
 # written to disk on the new machine, outside of any git-tracked
 # location. It's not a git-safety step (that's handled by .gitignore in
-# the backup step) — it's an OS-permission-safety step, making sure the
+# the backup step), it's an OS-permission-safety step, making sure the
 # restored key is only ever readable by the machine's owner. Note this
 # will silently overwrite an existing ~/.ssh with the same filenames if
-# one already exists on the target machine — that mirrors the original
+# one already exists on the target machine, that mirrors the original
 # script's behavior and was intentionally left unchanged here.
 restore_ssh_keys() {
     # Creates the .ssh folder in your home directory if it doesn't already
     # exist. The -p flag means "make parent folders if needed" and "don't
-    # complain if it already exists". SSH keys MUST live in ~/.ssh — if this
+    # complain if it already exists". SSH keys MUST live in ~/.ssh, if this
     # folder doesn't exist, SSH won't work at all.
     mkdir -p "$HOME/.ssh"
 
@@ -208,12 +208,12 @@ restore_ssh_keys() {
 }
 
 # =====================================================================
-# DONE — TELL THE USER THE RESTORE IS FINISHED
+# DONE, TELL THE USER THE RESTORE IS FINISHED
 # =====================================================================
 
 # WHAT: Prints the final success message and next-step reminder.
 # WHY: The terminal loads configuration files (.zshrc, .bash_profile)
-# only at startup — without restarting, the old (empty/default)
+# only at startup, without restarting, the old (empty/default)
 # configuration stays in effect and none of the restored settings take
 # hold, so the user is explicitly told to restart.
 print_restore_complete() {
@@ -221,7 +221,7 @@ print_restore_complete() {
 }
 
 # =====================================================================
-# MAIN — RUN EVERY RESTORE STEP IN ORDER
+# MAIN, RUN EVERY RESTORE STEP IN ORDER
 # =====================================================================
 # WHAT: Calls each single-purpose function above in the same order the
 # original script ran its steps, so the final behavior is identical.
