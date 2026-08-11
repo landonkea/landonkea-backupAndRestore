@@ -239,16 +239,24 @@ backup_app_inventory() {
 # WHAT: Saves the current crontab and any user-created LaunchAgents.
 # HOW: "crontab -l" prints the logged-in user's cron jobs; it exits with
 # an error (not a crash) when none exist, which 2>/dev/null and the
-# fallback echo handle quietly. "~/Library/LaunchAgents" is copied
-# wholesale since anything there was placed by the user or an app
-# installer, not by macOS itself.
+# fallback echo handle quietly. LaunchAgents are copied with the
+# "source/." form (copy the folder's contents) into an explicitly
+# pre-made destination, not "cp -R source dest" (copy the folder itself).
+# The latter only behaves the same on a first run, if BACKUP_DIR/LaunchAgents
+# already exists, e.g. from an earlier run today, "cp -R" nests the whole
+# source folder inside it instead of merging into it, one level deeper
+# every rerun. Pre-creating the destination and copying contents avoids
+# that regardless of how many times this runs against the same dated folder.
 # WHY: A cron job or LaunchAgent that silently stops running on a new
 # machine can be a hard thing to notice, let alone diagnose later.
 backup_scheduled_tasks() {
     echo "⏰ Backing up cron jobs and LaunchAgents..."
 
     crontab -l > "$BACKUP_DIR/crontab.txt" 2>/dev/null || echo "No crontab found, skipping."
-    [ -d "$HOME/Library/LaunchAgents" ] && cp -R "$HOME/Library/LaunchAgents" "$BACKUP_DIR/LaunchAgents"
+    if [ -d "$HOME/Library/LaunchAgents" ]; then
+        mkdir -p "$BACKUP_DIR/LaunchAgents"
+        cp -R "$HOME/Library/LaunchAgents/." "$BACKUP_DIR/LaunchAgents/"
+    fi
 }
 
 # =====================================================================
@@ -289,11 +297,18 @@ backup_ssh_keys() {
     if [ -d "$HOME/.ssh" ]; then
         echo "🔑 Copying SSH keys..."
 
-        # Copies the entire .ssh folder (and everything inside it) into the
-        # backup. The -R flag means "recursive", copy the folder AND all
-        # its contents. This is a critical backup because losing SSH keys
+        # Copies the entire .ssh folder's contents into the backup. The -R
+        # flag means "recursive", copy the folder AND all its contents.
+        # The trailing "/." on the source and pre-made destination folder
+        # matter: "cp -R sourceDir destDir" only behaves the same as a
+        # merge on a first run, if destDir already exists (e.g. a second
+        # run today), cp nests sourceDir inside it instead of copying into
+        # it. Copying "sourceDir/." into an already-created destDir avoids
+        # that regardless of how many times this runs against the same
+        # dated folder. This is a critical backup because losing SSH keys
         # means losing secure access to your GitHub account, servers, etc.
-        cp -R "$HOME/.ssh" "$BACKUP_DIR/dotfiles/ssh_backup"
+        mkdir -p "$BACKUP_DIR/dotfiles/ssh_backup"
+        cp -R "$HOME/.ssh/." "$BACKUP_DIR/dotfiles/ssh_backup/"
     fi
 }
 
@@ -312,7 +327,10 @@ backup_ssh_keys() {
 # registry configs, only for whichever of these actually exist.
 # HOW: Each block checks for its folder/file with -d or -f before
 # copying, so a tool that was never installed (e.g. no AWS CLI) is
-# silently skipped instead of throwing an error.
+# silently skipped instead of throwing an error. Each destination folder
+# is pre-made and copied into with the "source/." form, same reasoning
+# as backup_ssh_keys above: it keeps a rerun against today's folder from
+# nesting a fresh copy inside the previous one instead of overwriting it.
 # WHY: Losing a GPG key means commits stop verifying as signed; losing
 # cloud credentials means re-authenticating every CLI from scratch;
 # losing registry tokens means re-logging into private npm/yarn feeds.
@@ -320,9 +338,18 @@ backup_secrets() {
     echo "🔐 Copying GPG keys and cloud/registry credentials..."
     mkdir -p "$BACKUP_DIR/dotfiles"
 
-    [ -d "$HOME/.gnupg" ] && cp -R "$HOME/.gnupg" "$BACKUP_DIR/dotfiles/gnupg_backup"
-    [ -d "$HOME/.aws" ] && cp -R "$HOME/.aws" "$BACKUP_DIR/dotfiles/aws_backup"
-    [ -d "$HOME/.config/gcloud" ] && cp -R "$HOME/.config/gcloud" "$BACKUP_DIR/dotfiles/gcloud_backup"
+    if [ -d "$HOME/.gnupg" ]; then
+        mkdir -p "$BACKUP_DIR/dotfiles/gnupg_backup"
+        cp -R "$HOME/.gnupg/." "$BACKUP_DIR/dotfiles/gnupg_backup/"
+    fi
+    if [ -d "$HOME/.aws" ]; then
+        mkdir -p "$BACKUP_DIR/dotfiles/aws_backup"
+        cp -R "$HOME/.aws/." "$BACKUP_DIR/dotfiles/aws_backup/"
+    fi
+    if [ -d "$HOME/.config/gcloud" ]; then
+        mkdir -p "$BACKUP_DIR/dotfiles/gcloud_backup"
+        cp -R "$HOME/.config/gcloud/." "$BACKUP_DIR/dotfiles/gcloud_backup/"
+    fi
     if [ -f "$HOME/.kube/config" ]; then
         mkdir -p "$BACKUP_DIR/dotfiles/kube_backup"
         cp "$HOME/.kube/config" "$BACKUP_DIR/dotfiles/kube_backup/config"

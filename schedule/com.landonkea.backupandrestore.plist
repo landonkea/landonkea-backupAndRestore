@@ -19,7 +19,10 @@
         <string>__SCRIPT_PATH__</string>
     </array>
 
-    <!-- Runs every Sunday (Weekday 0) at 10:00 AM. -->
+    <!-- Runs every Sunday (Weekday 0) at 10:00 AM. If the Mac was asleep
+         or off at that time, launchd runs it the next time the Mac is
+         awake instead of skipping it, this catch-up behavior belongs to
+         StartCalendarInterval itself, not to RunAtLoad below. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Weekday</key>
@@ -30,8 +33,9 @@
         <integer>0</integer>
     </dict>
 
-    <!-- If the Mac was asleep or off at the scheduled time, launchd runs
-         this job the next time the Mac is awake instead of skipping it. -->
+    <!-- False so the job only runs on its schedule above, not an extra
+         time every time it's loaded (at login, or each time
+         install-schedule.sh is re-run). -->
     <key>RunAtLoad</key>
     <false/>
 
