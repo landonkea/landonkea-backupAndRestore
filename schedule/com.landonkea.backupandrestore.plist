@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  This is a launchd job definition, macOS's built-in task scheduler (it
+  plays the same role cron plays on Linux). install-schedule.sh copies
+  this file into ~/Library/LaunchAgents and rewrites the two
+  __SCRIPT_PATH__/__LOG_PATH__ placeholders below to real absolute paths
+  before loading it, so this file is a template, not something meant to
+  be loaded directly.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.landonkea.backupandrestore</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__SCRIPT_PATH__</string>
+    </array>
+
+    <!-- Runs every Sunday (Weekday 0) at 10:00 AM. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- If the Mac was asleep or off at the scheduled time, launchd runs
+         this job the next time the Mac is awake instead of skipping it. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_PATH__</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_PATH__</string>
+</dict>
+</plist>

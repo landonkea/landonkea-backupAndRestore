@@ -26,7 +26,20 @@ chmod +x backup.sh
 ./backup.sh
 ```
 
-This creates a dated folder like `Mac_Backup_2026-07-26/` in your home directory. Move that folder to a **private** cloud drive or USB stick.
+This creates a dated folder like `Mac_Backup_2026-07-26/` in your home directory. Move that folder to a **private** cloud drive or USB stick. Only the 4 most recent dated folders are kept, backup.sh deletes older ones automatically each time it runs.
+
+### Running It Automatically Every Week
+
+```bash
+cd landonkea-backupAndRestore
+schedule/install-schedule.sh
+```
+
+This installs a launchd job (macOS's built-in scheduler) that runs `backup.sh` every Sunday at 10:00 AM, so it happens without needing to remember. If the Mac is asleep or off at that time, launchd runs it the next time the Mac is awake instead of skipping it.
+
+- Log output: `~/Library/Logs/landonkea-backupandrestore.log`
+- Run it immediately instead of waiting for Sunday: `launchctl start com.landonkea.backupandrestore`
+- Turn scheduling off: `schedule/uninstall-schedule.sh` (this only removes the schedule, `backup.sh` can still be run by hand any time)
 
 ### Restoring (on your new Mac)
 

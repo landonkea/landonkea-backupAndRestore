@@ -27,6 +27,22 @@
 # tasks, and non-SSH secrets (GPG, cloud CLIs, registry tokens), each as
 # its own function following the same one-job pattern.
 
+# --- PATH SETUP (for scheduled/unattended runs) ---
+# WHAT: Adds common tool install locations to PATH before anything else runs.
+# HOW: When this script is run by hand from an interactive terminal, PATH
+# already includes everything .zshrc set up. When it's run by launchd on
+# a schedule (see schedule/), launchd starts jobs with a minimal PATH
+# ("/usr/bin:/bin:/usr/sbin:/sbin") that doesn't know about Homebrew,
+# rbenv, or pyenv, so "brew", "code", "mas", "pyenv", and "rbenv" would
+# all silently fail to be found. This line prepends their usual install
+# locations for both Apple Silicon (/opt/homebrew) and Intel (/usr/local)
+# Macs, plus rbenv/pyenv's own bin folders, before falling back to
+# whatever PATH was already set.
+# WHY: A scheduled backup that silently skips every tool because it
+# can't find any of them is worse than no backup at all, it looks
+# successful in the log but records almost nothing.
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$HOME/.rbenv/bin:$HOME/.pyenv/bin:$PATH"
+
 # =====================================================================
 # SECTION 1: SET UP THE BACKUP FOLDER
 # =====================================================================
@@ -316,6 +332,45 @@ backup_secrets() {
 }
 
 # =====================================================================
+# SECTION 11: PRUNE OLD BACKUPS
+# =====================================================================
+# Every run creates a new dated "Mac_Backup_<date>" folder and never
+# touches previous ones. That's fine for occasional manual runs, but a
+# weekly scheduled run (see schedule/) would otherwise build up an
+# unbounded pile of backup folders, and SSH-key copies, in $HOME forever.
+
+# WHAT: Deletes older Mac_Backup_* folders beyond the most recent
+# BACKUP_RETENTION_COUNT.
+# HOW: "ls -1d" lists matching folders one per line as full paths; "sort"
+# puts them in order since the date-stamped names sort chronologically as
+# plain text. macOS ships BSD head, which (unlike GNU head) has no
+# "-n -N" ("all but the last N lines") form, so the count of folders to
+# delete is computed by hand instead: total folders minus how many to
+# keep. If that comes out to zero or less (BACKUP_RETENTION_COUNT or
+# fewer folders exist), nothing runs and no deletion happens.
+# WHY: Keeping a handful of recent backups gives a short rollback window
+# without letting unattended runs quietly consume disk space, or leave
+# an ever-growing number of directories containing copies of SSH keys,
+# forever.
+BACKUP_RETENTION_COUNT=4
+
+prune_old_backups() {
+    echo "🧹 Pruning old backups (keeping the $BACKUP_RETENTION_COUNT most recent)..."
+
+    local backups
+    backups=$(ls -1d "$HOME"/Mac_Backup_*/ 2>/dev/null | sort)
+    local total
+    total=$(echo "$backups" | grep -c .)
+    local delete_count=$((total - BACKUP_RETENTION_COUNT))
+
+    if [ "$delete_count" -gt 0 ]; then
+        echo "$backups" | head -n "$delete_count" | while read -r old_backup; do
+            rm -rf "$old_backup"
+        done
+    fi
+}
+
+# =====================================================================
 # DONE, TELL THE USER WHAT TO DO NEXT
 # =====================================================================
 
@@ -348,6 +403,7 @@ main() {
     backup_scheduled_tasks
     backup_ssh_keys
     backup_secrets
+    prune_old_backups
     print_backup_complete
 }
 
