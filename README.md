@@ -8,8 +8,13 @@ A simple macOS developer backup and restore toolkit. Save everything you've inst
 - **Global npm packages**: JavaScript libraries available system-wide
 - **Python packages**: libraries installed via pip
 - **Ruby gems**: libraries installed via the gem system
-- **Dotfiles**: `.zshrc`, `.bash_profile`, `.gitconfig`
+- **Language versions**: nvm, pyenv, and rbenv version lists
+- **Dotfiles**: `.zshrc`, `.zprofile`, `.zshenv`, `.bash_profile`, `.gitconfig`, global `.gitignore`, `.vimrc`, `.tmux.conf`, `.inputrc`, `.p10k.zsh`, `starship.toml`
+- **VS Code**: installed extensions, `settings.json`, `keybindings.json`
+- **App inventory**: Mac App Store apps (via `mas`) and everything in `/Applications`
+- **Scheduled tasks**: crontab and user `LaunchAgents`
 - **SSH keys**: authentication keys for GitHub, servers, etc.
+- **Other secrets**: GPG keys, AWS/gcloud/kube credentials, npm/yarn registry configs (only backed up if present on the machine)
 
 ## How to Use
 
@@ -38,4 +43,4 @@ chmod +x /path/to/restore.sh
 
 ## Security Note
 
-The backup folder contains your **SSH private keys** in `dotfiles/ssh_backup/`. These are secret files that authenticate you with GitHub, servers, and other services. **Never share this folder publicly** or upload it to a public repository. Store it on encrypted cloud storage or a physical drive you keep secure.
+The backup folder contains your **SSH private keys** in `dotfiles/ssh_backup/`, and, if present on your machine, **GPG keys** (`dotfiles/gnupg_backup/`), **AWS/gcloud/kube credentials** (`dotfiles/aws_backup/`, `dotfiles/gcloud_backup/`, `dotfiles/kube_backup/`), and **registry auth tokens** (`dotfiles/npmrc.bak`, `dotfiles/yarnrc.bak`). These are all secret files that authenticate you with GitHub, cloud providers, and other services. **Never share this folder publicly** or upload it to a public repository. Store it on encrypted cloud storage or a physical drive you keep secure.

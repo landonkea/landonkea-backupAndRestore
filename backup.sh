@@ -21,8 +21,11 @@
 # for Homebrew or npm. It also means adding or removing a backup step
 # later is a one-line change in main(), not a rewrite of a giant block.
 # HOW: Every function below does exactly one job and is named after that
-# job. None of the actual commands, flags, or file paths were changed,
-# this is a structural reorganization only, not a behavior change.
+# job. Originally this covered Homebrew, npm/pip/gem, three dotfiles, and
+# SSH keys only; since then, coverage was widened to also capture language
+# version managers, editor config, installed-app inventory, scheduled
+# tasks, and non-SSH secrets (GPG, cloud CLIs, registry tokens), each as
+# its own function following the same one-job pattern.
 
 # =====================================================================
 # SECTION 1: SET UP THE BACKUP FOLDER
@@ -98,7 +101,37 @@ backup_language_packages() {
 }
 
 # =====================================================================
-# SECTION 4: BACKUP DOTFILES (hidden configuration files)
+# SECTION 4: BACKUP LANGUAGE VERSION MANAGERS (nvm, pyenv, rbenv)
+# =====================================================================
+# backup_language_packages saves which packages are installed, but not
+# which language runtime version they're installed under. If Node,
+# Python, or Ruby versions are managed with nvm/pyenv/rbenv instead of
+# whatever Homebrew ships, that version choice needs saving separately.
+
+# WHAT: Saves the list of installed runtime versions for nvm, pyenv, and rbenv.
+# HOW: nvm isn't a real executable, it's a shell function loaded by
+# sourcing "$HOME/.nvm/nvm.sh", so it's sourced directly here instead of
+# checked with "command -v". pyenv and rbenv are real executables, so
+# "command -v" works for them. Each tool's version-listing output is
+# saved to its own text file in BACKUP_DIR; a missing tool is skipped
+# without error.
+# WHY: Restoring the exact runtime versions avoids a package that needs
+# a specific Node/Python/Ruby version behaving differently under
+# whatever version Homebrew's default install happens to be.
+backup_language_versions() {
+    echo "🧬 Backing up language version manager state..."
+
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then
+        source "$HOME/.nvm/nvm.sh"
+        nvm ls --no-colors > "$BACKUP_DIR/nvm-versions.txt" 2>/dev/null
+    fi
+
+    command -v pyenv &> /dev/null && pyenv versions > "$BACKUP_DIR/pyenv-versions.txt" 2>/dev/null
+    command -v rbenv &> /dev/null && rbenv versions > "$BACKUP_DIR/rbenv-versions.txt" 2>/dev/null
+}
+
+# =====================================================================
+# SECTION 5: BACKUP DOTFILES (hidden configuration files)
 # =====================================================================
 # Dotfiles are hidden configuration files in your home folder. They start
 # with a dot (.) which makes them invisible in Finder by default. They
@@ -106,12 +139,12 @@ backup_language_packages() {
 # and what shell shortcuts you've set up. Losing these on a new Mac means
 # hours of re-configuring, so we back them up.
 
-# WHAT: Copies .zshrc, .bash_profile, and .gitconfig into dotfiles/.
+# WHAT: Copies shell, Git, editor, and prompt config files into dotfiles/.
 # HOW: Creates a "dotfiles" subfolder inside BACKUP_DIR to keep these
 # files organized in one place, then copies each config file from $HOME
 # with a ".bak" suffix. Each copy's "2>/dev/null" hides the error if that
-# particular file doesn't exist on this machine (e.g. a user with no
-# .bash_profile), this is expected and not a failure.
+# particular file doesn't exist on this machine, this is expected (not
+# everyone uses tmux, or Powerlevel10k, or Starship) and not a failure.
 # WHY: These files carry personal shell/editor/Git configuration that is
 # tedious to recreate by hand, restoring them saves hours of setup.
 backup_dotfiles() {
@@ -119,12 +152,91 @@ backup_dotfiles() {
     mkdir -p "$BACKUP_DIR/dotfiles"
 
     cp "$HOME/.zshrc" "$BACKUP_DIR/dotfiles/zshrc.bak" 2>/dev/null
+    cp "$HOME/.zprofile" "$BACKUP_DIR/dotfiles/zprofile.bak" 2>/dev/null
+    cp "$HOME/.zshenv" "$BACKUP_DIR/dotfiles/zshenv.bak" 2>/dev/null
     cp "$HOME/.bash_profile" "$BACKUP_DIR/dotfiles/bash_profile.bak" 2>/dev/null
     cp "$HOME/.gitconfig" "$BACKUP_DIR/dotfiles/gitconfig.bak" 2>/dev/null
+    cp "$HOME/.gitignore_global" "$BACKUP_DIR/dotfiles/gitignore_global.bak" 2>/dev/null
+    cp "$HOME/.vimrc" "$BACKUP_DIR/dotfiles/vimrc.bak" 2>/dev/null
+    cp "$HOME/.tmux.conf" "$BACKUP_DIR/dotfiles/tmux_conf.bak" 2>/dev/null
+    cp "$HOME/.inputrc" "$BACKUP_DIR/dotfiles/inputrc.bak" 2>/dev/null
+    cp "$HOME/.p10k.zsh" "$BACKUP_DIR/dotfiles/p10k_zsh.bak" 2>/dev/null
+    cp "$HOME/.config/starship.toml" "$BACKUP_DIR/dotfiles/starship_toml.bak" 2>/dev/null
 }
 
 # =====================================================================
-# SECTION 5: BACKUP SSH KEYS (SECRET authentication keys)
+# SECTION 6: BACKUP EDITOR CONFIG (VS Code)
+# =====================================================================
+# VS Code stores installed extensions and personal settings/keybinding
+# overrides outside of any dotfile, in its own app support folder. Losing
+# these means re-finding and reinstalling every extension by hand.
+
+# WHAT: Saves the list of installed VS Code extensions and copies its
+# settings.json and keybindings.json.
+# HOW: "code --list-extensions" prints one extension ID per line, which
+# restore.sh can feed straight back into "code --install-extension". The
+# settings/keybindings files live under VS Code's per-user "User" folder;
+# both are copied only if present, missing either one is not an error.
+# WHY: Extensions and editor settings are personal, hard-won configuration
+# that's tedious to rebuild from memory on a new machine.
+backup_vscode_config() {
+    if command -v code &> /dev/null; then
+        echo "🧩 Backing up VS Code extensions and settings..."
+        mkdir -p "$BACKUP_DIR/dotfiles/vscode"
+
+        code --list-extensions > "$BACKUP_DIR/dotfiles/vscode/extensions.txt" 2>/dev/null
+        cp "$HOME/Library/Application Support/Code/User/settings.json" "$BACKUP_DIR/dotfiles/vscode/settings.json" 2>/dev/null
+        cp "$HOME/Library/Application Support/Code/User/keybindings.json" "$BACKUP_DIR/dotfiles/vscode/keybindings.json" 2>/dev/null
+    fi
+}
+
+# =====================================================================
+# SECTION 7: BACKUP APP INVENTORY (Mac App Store + manually installed apps)
+# =====================================================================
+# The Brewfile only covers apps installed through Homebrew. Anything
+# installed via the Mac App Store, or dragged into /Applications from a
+# downloaded .dmg, is invisible to it, so it's recorded separately here.
+
+# WHAT: Saves the list of Mac App Store apps and everything in /Applications.
+# HOW: "mas list" (if the "mas" CLI is installed) prints each App Store
+# app's ID, name, and version; restore.sh can pass the ID straight to
+# "mas install". The /Applications listing is reference-only, there's no
+# reliable command-line installer for apps downloaded manually, so it's
+# saved as a checklist to work through by hand.
+# WHY: Between Homebrew, the Mac App Store, and manual installs, apps
+# tend to end up in all three places, this makes sure none of them are
+# silently forgotten in a restore.
+backup_app_inventory() {
+    echo "🗂️  Backing up installed application inventory..."
+
+    command -v mas &> /dev/null && mas list > "$BACKUP_DIR/mas-apps.txt" 2>/dev/null
+    ls /Applications > "$BACKUP_DIR/applications-list.txt" 2>/dev/null
+}
+
+# =====================================================================
+# SECTION 8: BACKUP SCHEDULED TASKS (cron jobs and LaunchAgents)
+# =====================================================================
+# Developers sometimes automate things with cron jobs or their own
+# LaunchAgents (macOS's built-in scheduler), and both are easy to forget
+# about entirely until something quietly stops running on the new machine.
+
+# WHAT: Saves the current crontab and any user-created LaunchAgents.
+# HOW: "crontab -l" prints the logged-in user's cron jobs; it exits with
+# an error (not a crash) when none exist, which 2>/dev/null and the
+# fallback echo handle quietly. "~/Library/LaunchAgents" is copied
+# wholesale since anything there was placed by the user or an app
+# installer, not by macOS itself.
+# WHY: A cron job or LaunchAgent that silently stops running on a new
+# machine can be a hard thing to notice, let alone diagnose later.
+backup_scheduled_tasks() {
+    echo "⏰ Backing up cron jobs and LaunchAgents..."
+
+    crontab -l > "$BACKUP_DIR/crontab.txt" 2>/dev/null || echo "No crontab found, skipping."
+    [ -d "$HOME/Library/LaunchAgents" ] && cp -R "$HOME/Library/LaunchAgents" "$BACKUP_DIR/LaunchAgents"
+}
+
+# =====================================================================
+# SECTION 9: BACKUP SSH KEYS (SECRET authentication keys)
 # =====================================================================
 # SSH keys are special secret files that let your computer prove its
 # identity to servers like GitHub, university servers, or work servers.
@@ -138,7 +250,9 @@ backup_dotfiles() {
 # ($BACKUP_DIR, e.g. "Mac_Backup_2026-07-26/"). That backup folder is
 # NOT itself protected by anything in this script, the protection lives
 # one layer up, in this repo's .gitignore, which excludes every folder
-# matching "Mac_Backup_*/" (and "*.bak" files) from version control.
+# matching "Mac_Backup_*/" (and "*.bak" files) from version control. The
+# other secrets backed up further down (Section 10) land in this same
+# folder and rely on this exact same protection.
 # HOW it holds together: as long as (a) this script keeps writing backups
 # under the "$HOME/Mac_Backup_<date>" naming pattern, and (b) .gitignore
 # keeps the "Mac_Backup_*/" pattern intact, a real private key can never
@@ -168,23 +282,58 @@ backup_ssh_keys() {
 }
 
 # =====================================================================
+# SECTION 10: BACKUP OTHER SECRETS (GPG, cloud CLI configs, registry tokens)
+# =====================================================================
+# SSH keys aren't the only bearer secrets a developer's home folder
+# holds. GPG keys (commit signing), cloud CLI credentials, and package
+# registry auth tokens are just as sensitive and just as easy to forget
+# when only thinking about "apps and dotfiles." These all land in the
+# same "dotfiles" subfolder as the SSH backup above, so they're covered
+# by the exact same "Mac_Backup_*/" .gitignore protection described in
+# the SSH KEY SAFETY note above.
+
+# WHAT: Copies GPG keys, AWS/gcloud/kube credentials, and npm/yarn
+# registry configs, only for whichever of these actually exist.
+# HOW: Each block checks for its folder/file with -d or -f before
+# copying, so a tool that was never installed (e.g. no AWS CLI) is
+# silently skipped instead of throwing an error.
+# WHY: Losing a GPG key means commits stop verifying as signed; losing
+# cloud credentials means re-authenticating every CLI from scratch;
+# losing registry tokens means re-logging into private npm/yarn feeds.
+backup_secrets() {
+    echo "🔐 Copying GPG keys and cloud/registry credentials..."
+    mkdir -p "$BACKUP_DIR/dotfiles"
+
+    [ -d "$HOME/.gnupg" ] && cp -R "$HOME/.gnupg" "$BACKUP_DIR/dotfiles/gnupg_backup"
+    [ -d "$HOME/.aws" ] && cp -R "$HOME/.aws" "$BACKUP_DIR/dotfiles/aws_backup"
+    [ -d "$HOME/.config/gcloud" ] && cp -R "$HOME/.config/gcloud" "$BACKUP_DIR/dotfiles/gcloud_backup"
+    if [ -f "$HOME/.kube/config" ]; then
+        mkdir -p "$BACKUP_DIR/dotfiles/kube_backup"
+        cp "$HOME/.kube/config" "$BACKUP_DIR/dotfiles/kube_backup/config"
+    fi
+    cp "$HOME/.npmrc" "$BACKUP_DIR/dotfiles/npmrc.bak" 2>/dev/null
+    cp "$HOME/.yarnrc" "$BACKUP_DIR/dotfiles/yarnrc.bak" 2>/dev/null
+}
+
+# =====================================================================
 # DONE, TELL THE USER WHAT TO DO NEXT
 # =====================================================================
 
 # WHAT: Prints the final success message and next-step reminder.
-# WHY: The backup folder now contains a real SSH private key. It's
+# WHY: The backup folder now contains real secrets (SSH private keys and,
+# on machines that have them, GPG keys and cloud CLI credentials). It's
 # already git-ignored, but it still needs to end up somewhere private
 # (not emailed, not uploaded to a public share) so the user gets an
 # explicit reminder to move it to private storage.
 print_backup_complete() {
     echo "✅ Backup complete! You can now move the folder '$BACKUP_DIR' to your private cloud storage."
+    echo "   Reminder: this backup contains SSH keys and, if present on this machine, GPG/AWS/gcloud/kube credentials, keep it private."
 }
 
 # =====================================================================
 # MAIN, RUN EVERY BACKUP STEP IN ORDER
 # =====================================================================
-# WHAT: Calls each single-purpose function above in the same order the
-# original script ran its steps, so the final behavior is identical.
+# WHAT: Calls each single-purpose function above in order.
 # WHY: Keeping the sequence explicit and in one place makes it obvious
 # at a glance what a full backup run does, without re-reading every
 # function body.
@@ -192,8 +341,13 @@ main() {
     setup_backup_dir
     backup_homebrew_packages
     backup_language_packages
+    backup_language_versions
     backup_dotfiles
+    backup_vscode_config
+    backup_app_inventory
+    backup_scheduled_tasks
     backup_ssh_keys
+    backup_secrets
     print_backup_complete
 }
 

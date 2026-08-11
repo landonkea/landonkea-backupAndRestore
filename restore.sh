@@ -22,14 +22,17 @@
 # found), separating them into functions makes each step's success
 # path and fallback path easy to follow on its own.
 # HOW: Originally a structural reorganization only; since then the
-# Homebrew install URL was fixed (it pointed at a broken host) and Ruby
-# gem restoration was added so gems round-trip like npm/pip packages.
+# Homebrew install URL was fixed (it pointed at a broken host), Ruby gem
+# restoration was added so gems round-trip like npm/pip packages, and
+# restore steps were added to match backup.sh's wider coverage: language
+# version managers, VS Code, installed-app inventory, scheduled tasks,
+# and non-SSH secrets (GPG, cloud CLIs, registry tokens).
 
 # =====================================================================
 # SECTION 1: INSTALL HOMEBREW IF IT IS MISSING
 # =====================================================================
 # Homebrew is a free package manager for macOS. It lets you install
-# developer tools and desktop apps from the terminal instead of hunting
+# developer tools and apps from the terminal instead of hunting
 # for download links on websites. The restore process needs Homebrew
 # first because everything else (apps, casks) depends on it.
 
@@ -137,32 +140,148 @@ restore_language_packages() {
 }
 
 # =====================================================================
-# SECTION 4: RESTORE DOTFILES
+# SECTION 4: RESTORE LANGUAGE VERSION MANAGER VERSIONS
+# =====================================================================
+# WHAT: Reinstalls Node/Python/Ruby versions recorded by nvm, pyenv, or rbenv.
+# HOW: Each block only runs if the manager itself is already installed
+# on this new machine, this script installs the language *versions* those
+# tools manage, not the tools themselves. Version numbers are pulled out
+# of each saved listing with grep, since the default output of "nvm ls",
+# "pyenv versions", and "rbenv versions" includes extra decoration
+# (arrows, asterisks, "system", header lines) around the plain version
+# number that would otherwise get passed straight to "install" and fail.
+# WHY: A package that depends on "Node 18" or "Ruby 3.1" specifically
+# will misbehave under whatever version Homebrew happens to default to.
+restore_language_versions() {
+    echo "🧬 Restoring language version manager versions..."
+
+    if [ -f "nvm-versions.txt" ] && [ -s "$HOME/.nvm/nvm.sh" ]; then
+        source "$HOME/.nvm/nvm.sh"
+        grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' nvm-versions.txt | sort -u | while read -r version; do
+            nvm install "$version"
+        done
+    fi
+
+    if [ -f "pyenv-versions.txt" ] && command -v pyenv &> /dev/null; then
+        grep -oE '[0-9]+\.[0-9]+\.[0-9]+' pyenv-versions.txt | sort -u | while read -r version; do
+            pyenv install -s "$version"
+        done
+    fi
+
+    if [ -f "rbenv-versions.txt" ] && command -v rbenv &> /dev/null; then
+        grep -oE '[0-9]+\.[0-9]+\.[0-9]+' rbenv-versions.txt | sort -u | while read -r version; do
+            rbenv install -s "$version"
+        done
+    fi
+}
+
+# =====================================================================
+# SECTION 5: RESTORE DOTFILES
 # =====================================================================
 # Dotfiles are hidden configuration files (they start with a dot) that
-# control how your terminal and Git behave. Restoring these saves hours
-# of manual re-configuration.
+# control how your terminal, editor, and Git behave. Restoring these
+# saves hours of manual re-configuration.
 
-# WHAT: Copies .zshrc, .bash_profile, and .gitconfig back from the
+# WHAT: Copies shell, Git, editor, and prompt config files back from the
 # backup into $HOME.
 # HOW: Each line uses the pattern "[ condition ] && action", "if the
 # condition is true, then do the action." Specifically: does
-# "dotfiles/<name>.bak" exist in the backup? If yes, copy it back to
-# "$HOME/<name>". This is safer than always copying because the backup
-# might not include every dotfile (the user may not have had one on the
-# old machine), and doing nothing in that case causes no error.
-# WHY: These files carry personal shell/Git configuration that's
+# "dotfiles/<name>.bak" exist in the backup? If yes, copy it back to its
+# real location. This is safer than always copying because the backup
+# might not include every dotfile (the old machine may not have had one),
+# and doing nothing in that case causes no error.
+# WHY: These files carry personal shell/editor/Git configuration that's
 # tedious to recreate by hand.
 restore_dotfiles() {
     echo "🔒 Restoring configuration files..."
 
     [ -f "dotfiles/zshrc.bak" ] && cp "dotfiles/zshrc.bak" "$HOME/.zshrc"
+    [ -f "dotfiles/zprofile.bak" ] && cp "dotfiles/zprofile.bak" "$HOME/.zprofile"
+    [ -f "dotfiles/zshenv.bak" ] && cp "dotfiles/zshenv.bak" "$HOME/.zshenv"
     [ -f "dotfiles/bash_profile.bak" ] && cp "dotfiles/bash_profile.bak" "$HOME/.bash_profile"
     [ -f "dotfiles/gitconfig.bak" ] && cp "dotfiles/gitconfig.bak" "$HOME/.gitconfig"
+    [ -f "dotfiles/gitignore_global.bak" ] && cp "dotfiles/gitignore_global.bak" "$HOME/.gitignore_global"
+    [ -f "dotfiles/vimrc.bak" ] && cp "dotfiles/vimrc.bak" "$HOME/.vimrc"
+    [ -f "dotfiles/tmux_conf.bak" ] && cp "dotfiles/tmux_conf.bak" "$HOME/.tmux.conf"
+    [ -f "dotfiles/inputrc.bak" ] && cp "dotfiles/inputrc.bak" "$HOME/.inputrc"
+    [ -f "dotfiles/p10k_zsh.bak" ] && cp "dotfiles/p10k_zsh.bak" "$HOME/.p10k.zsh"
+    if [ -f "dotfiles/starship_toml.bak" ]; then
+        mkdir -p "$HOME/.config"
+        cp "dotfiles/starship_toml.bak" "$HOME/.config/starship.toml"
+    fi
 }
 
 # =====================================================================
-# SECTION 5: RESTORE SSH KEYS (SECRET authentication keys)
+# SECTION 6: RESTORE EDITOR CONFIG (VS Code)
+# =====================================================================
+# WHAT: Reinstalls VS Code extensions and restores settings/keybindings.
+# HOW: "xargs -L1 code --install-extension" installs one extension ID
+# per line from the saved list; "-L1" runs the command once per line
+# rather than batching every ID into a single call, so one bad or
+# renamed extension ID fails on its own line instead of aborting the
+# whole batch.
+# WHY: Reinstalling extensions by hand from memory means missing several.
+restore_vscode_config() {
+    if [ -f "dotfiles/vscode/extensions.txt" ] && command -v code &> /dev/null; then
+        echo "🧩 Restoring VS Code extensions and settings..."
+
+        xargs -L1 code --install-extension < "dotfiles/vscode/extensions.txt"
+
+        mkdir -p "$HOME/Library/Application Support/Code/User"
+        [ -f "dotfiles/vscode/settings.json" ] && cp "dotfiles/vscode/settings.json" "$HOME/Library/Application Support/Code/User/settings.json"
+        [ -f "dotfiles/vscode/keybindings.json" ] && cp "dotfiles/vscode/keybindings.json" "$HOME/Library/Application Support/Code/User/keybindings.json"
+    fi
+}
+
+# =====================================================================
+# SECTION 7: RESTORE APP INVENTORY (Mac App Store apps)
+# =====================================================================
+# WHAT: Reinstalls Mac App Store apps by ID; prints the manually-installed
+# app list as a reminder rather than trying to auto-install those.
+# HOW: "mas-apps.txt" lines look like "409183694 Keynote (12.2)", the
+# leading number is the App Store ID mas needs, so awk grabs just that
+# first field before handing IDs to "xargs -n1 mas install". There's no
+# equivalent command for apps installed from a downloaded .dmg, so
+# "applications-list.txt" is only printed for review by hand.
+# WHY: mas apps can be reinstalled unattended given the IDs; manually
+# installed apps can't be, so the best this script can do is surface the
+# list instead of silently dropping it.
+restore_app_inventory() {
+    if [ -f "mas-apps.txt" ] && command -v mas &> /dev/null; then
+        echo "🗂️  Restoring Mac App Store apps..."
+        awk '{print $1}' mas-apps.txt | xargs -n1 mas install
+    fi
+
+    if [ -f "applications-list.txt" ]; then
+        echo "🗂️  These apps were manually installed (not via Homebrew or the App Store) on the old machine, review and reinstall as needed:"
+        cat applications-list.txt
+    fi
+}
+
+# =====================================================================
+# SECTION 8: RESTORE SCHEDULED TASKS (cron jobs and LaunchAgents)
+# =====================================================================
+# WHAT: Restores the crontab and copies LaunchAgents back into place.
+# HOW: "crontab crontab.txt" replaces the current user's entire crontab
+# with the backed-up one. LaunchAgents are copied back but deliberately
+# NOT loaded with launchctl automatically, a restored agent might
+# reference an app or path that doesn't exist yet on the new machine, so
+# loading them is left as a manual step after review.
+# WHY: Cron jobs and LaunchAgents run silently in the background, if
+# restore skipped them, the only sign of a problem would be whatever
+# they automated quietly not happening anymore.
+restore_scheduled_tasks() {
+    [ -f "crontab.txt" ] && echo "⏰ Restoring crontab..." && crontab crontab.txt
+
+    if [ -d "LaunchAgents" ]; then
+        echo "⏰ Restoring LaunchAgents (not auto-loaded, run 'launchctl load' on each after reviewing it)..."
+        mkdir -p "$HOME/Library/LaunchAgents"
+        cp -R LaunchAgents/. "$HOME/Library/LaunchAgents/"
+    fi
+}
+
+# =====================================================================
+# SECTION 9: RESTORE SSH KEYS (SECRET authentication keys)
 # =====================================================================
 # SSH keys are secret files that let your computer prove its identity to
 # servers like GitHub. Restoring them means you don't have to regenerate
@@ -208,23 +327,70 @@ restore_ssh_keys() {
 }
 
 # =====================================================================
+# SECTION 10: RESTORE OTHER SECRETS (GPG, cloud CLI configs, registry tokens)
+# =====================================================================
+# WHAT: Restores GPG keys, AWS/gcloud/kube credentials, and npm/yarn
+# registry configs, locking down permissions the same way SSH keys are.
+# HOW: Same pattern as restore_ssh_keys, each secret is only restored if
+# its backup actually exists. GPG and AWS credential folders get
+# "chmod -R go-rwx" (strip all group/other access recursively) rather
+# than a flat "chmod 600 *", because both can contain subfolders (like
+# GPG's private-keys-v1.d) that still need their owner-execute bit to
+# stay traversable, a blanket 600 on a directory would lock the owner
+# out of it too. The kube config is a single file, so a plain 600 is enough.
+# WHY: These are the same category of bearer secret as an SSH key,
+# skipping them here would mean re-authenticating every cloud CLI and
+# regenerating a GPG key from scratch on every new machine.
+restore_secrets() {
+    if [ -d "dotfiles/gnupg_backup" ]; then
+        echo "🔐 Restoring GPG keys..."
+        cp -R dotfiles/gnupg_backup "$HOME/.gnupg"
+        chmod -R go-rwx "$HOME/.gnupg"
+    fi
+
+    if [ -d "dotfiles/aws_backup" ]; then
+        echo "🔐 Restoring AWS credentials..."
+        cp -R dotfiles/aws_backup "$HOME/.aws"
+        chmod -R go-rwx "$HOME/.aws"
+    fi
+
+    if [ -d "dotfiles/gcloud_backup" ]; then
+        echo "🔐 Restoring gcloud credentials..."
+        mkdir -p "$HOME/.config"
+        cp -R dotfiles/gcloud_backup "$HOME/.config/gcloud"
+    fi
+
+    if [ -f "dotfiles/kube_backup/config" ]; then
+        echo "🔐 Restoring kube config..."
+        mkdir -p "$HOME/.kube"
+        cp dotfiles/kube_backup/config "$HOME/.kube/config"
+        chmod 600 "$HOME/.kube/config"
+    fi
+
+    [ -f "dotfiles/npmrc.bak" ] && cp "dotfiles/npmrc.bak" "$HOME/.npmrc"
+    [ -f "dotfiles/yarnrc.bak" ] && cp "dotfiles/yarnrc.bak" "$HOME/.yarnrc"
+}
+
+# =====================================================================
 # DONE, TELL THE USER THE RESTORE IS FINISHED
 # =====================================================================
 
-# WHAT: Prints the final success message and next-step reminder.
+# WHAT: Prints the final success message and next-step reminders.
 # WHY: The terminal loads configuration files (.zshrc, .bash_profile)
 # only at startup, without restarting, the old (empty/default)
 # configuration stays in effect and none of the restored settings take
-# hold, so the user is explicitly told to restart.
+# hold, so the user is explicitly told to restart. LaunchAgents are also
+# deliberately left unloaded (see restore_scheduled_tasks), so that's
+# called out too.
 print_restore_complete() {
     echo "✅ System restore complete! Please restart your terminal."
+    echo "   If any LaunchAgents were restored, review them and run 'launchctl load' on each you want active."
 }
 
 # =====================================================================
 # MAIN, RUN EVERY RESTORE STEP IN ORDER
 # =====================================================================
-# WHAT: Calls each single-purpose function above in the same order the
-# original script ran its steps, so the final behavior is identical.
+# WHAT: Calls each single-purpose function above in order.
 # WHY: Keeping the sequence explicit and in one place makes it obvious
 # at a glance what a full restore run does, without re-reading every
 # function body.
@@ -234,8 +400,13 @@ main() {
     install_homebrew_if_missing
     restore_homebrew_packages
     restore_language_packages
+    restore_language_versions
     restore_dotfiles
+    restore_vscode_config
+    restore_app_inventory
+    restore_scheduled_tasks
     restore_ssh_keys
+    restore_secrets
     print_restore_complete
 }
 
