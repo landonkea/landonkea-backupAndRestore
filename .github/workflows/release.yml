@@ -1,0 +1,32 @@
+name: Stable Release
+
+# Fires when a stable version tag is pushed, e.g. v1.3.0. The job itself
+# skips any tag containing "-rc" (those belong to staging-release.yml
+# instead), so this workflow only ever produces a real, non-prerelease
+# GitHub Release with auto-generated changelog notes.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Syntax check before releasing
+        run: bash -n backup.sh restore.sh
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

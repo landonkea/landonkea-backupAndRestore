@@ -1,0 +1,32 @@
+name: Staging Pre-release
+
+# Fires when a release-candidate tag is pushed, e.g. v1.3.0-rc1.
+# This is the "staging" channel for a script-based tool like this one:
+# there's no server to deploy to, so a pre-release build is the
+# equivalent of a staging environment. It lets a tag get tested (clone
+# it, run it on a real Mac) before it's promoted to a stable v1.3.0 tag.
+on:
+  push:
+    tags:
+      - 'v*-rc*'
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Syntax check before releasing
+        run: bash -n backup.sh restore.sh
+
+      - name: Create GitHub pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 'Pre-release ${{ github.ref_name }}'
+          prerelease: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
