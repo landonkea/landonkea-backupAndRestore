@@ -57,3 +57,10 @@ chmod +x /path/to/restore.sh
 ## Security Note
 
 The backup folder contains your **SSH private keys** in `dotfiles/ssh_backup/`, and, if present on your machine, **GPG keys** (`dotfiles/gnupg_backup/`), **AWS/gcloud/kube credentials** (`dotfiles/aws_backup/`, `dotfiles/gcloud_backup/`, `dotfiles/kube_backup/`), and **registry auth tokens** (`dotfiles/npmrc.bak`, `dotfiles/yarnrc.bak`). These are all secret files that authenticate you with GitHub, cloud providers, and other services. **Never share this folder publicly** or upload it to a public repository. Store it on encrypted cloud storage or a physical drive you keep secure.
+
+## More Documentation
+
+- [`RELEASING.md`](RELEASING.md) — branching convention and how version tags turn into GitHub releases
+- [`BUILD_LOG.md`](BUILD_LOG.md) — full commit history and how to rebuild this repo from scratch
+- [`FEATURE_IDEAS.md`](FEATURE_IDEAS.md) — a running list of concrete features this tool doesn't have yet
+- [`docs/DESIGN.md`](docs/DESIGN.md) — diagrams of the backup and restore flow
