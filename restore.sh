@@ -28,6 +28,28 @@
 # version managers, VS Code, installed-app inventory, scheduled tasks,
 # and non-SSH secrets (GPG, cloud CLIs, registry tokens).
 
+# WHAT: Copies the contents of $1 into $2, creating $2 first.
+# HOW: Every "restore this whole folder" step below (SSH keys, GPG,
+# AWS, gcloud) needs the same two-step dance: pre-create the
+# destination, then copy the source's contents ("/.") into it rather
+# than the source folder itself. Pre-creating the destination matters
+# because GPG/AWS/gcloud's own CLIs often auto-create their config
+# folder the moment they're used (including possibly earlier in this
+# same restore run, e.g. via a Homebrew formula's postinstall), so
+# "$HOME/.gnupg" etc. may already exist by the time this runs. A bare
+# "cp -R src dest" nests src's contents one level deeper in that case
+# ("dest/src_name/...") instead of restoring into dest directly.
+# WHY pulled out into its own function: this exact two-line dance was
+# repeated four times below with only the two paths changing, one
+# fixed and tested implementation is less to keep in sync than four
+# copies of the same reasoning.
+copy_dir_contents() {
+    local src="$1"
+    local dest="$2"
+    mkdir -p "$dest"
+    cp -R "$src/." "$dest/"
+}
+
 # =====================================================================
 # SECTION 1: INSTALL HOMEBREW IF IT IS MISSING
 # =====================================================================
@@ -103,9 +125,17 @@ restore_homebrew_packages() {
 # HOW: Each "if" does two checks joined with "&&" (both must be true):
 # does the backed-up list file exist, AND is the package manager
 # installed? If either is false, that block is skipped silently, no
-# errors, no noise. "xargs npm install -g < file" reads package names
-# one per line from the file and passes them as arguments to
-# "npm install -g" (global install). "pip install -r requirements.txt"
+# errors, no noise. The NPM list is "npm list -g --depth=0"'s raw
+# output, a tree ("├── pkg@1.2.3") with a leading install-path header
+# line, not a plain package list, so it can't be fed to
+# "npm install -g" directly: "grep '@'" drops the header line (it has
+# no "@"), then sed strips the "├── "/"└── " tree glyphs and the
+# trailing "@version" (matching only the LAST "@", so scoped names
+# like "@babel/core@7.24.0" keep their own leading "@" and become
+# "@babel/core", not "core"), leaving one bare package name per line
+# for "xargs npm install -g" to reinstall (latest version, same as
+# the Ruby gems below, not pinned like Python's requirements.txt is).
+# "pip install -r requirements.txt"
 # reads the "package==version" lines pip wrote during backup and
 # reinstalls those exact versions. Ruby gems are handled a little
 # differently: backup.sh saves "gem list" output, and each line of that
@@ -125,7 +155,9 @@ restore_language_packages() {
 
     if [ -f "global-npm-packages.txt" ] && command -v npm &> /dev/null; then
         echo "Installing global NPM packages..."
-        xargs npm install -g < global-npm-packages.txt
+        grep '@' global-npm-packages.txt \
+            | sed -E 's/^[│├└─[:space:]]+//; s/@[^@]*$//' \
+            | xargs npm install -g
     fi
 
     if [ -f "requirements.txt" ] && command -v pip &> /dev/null; then
@@ -320,7 +352,7 @@ restore_ssh_keys() {
     if [ -d "dotfiles/ssh_backup" ]; then
         echo "🔑 Restoring SSH keys..."
 
-        cp -R dotfiles/ssh_backup/* "$HOME/.ssh/"
+        copy_dir_contents "dotfiles/ssh_backup" "$HOME/.ssh"
         chmod 700 "$HOME/.ssh"
         chmod 600 "$HOME/.ssh/"*
     fi
@@ -332,32 +364,41 @@ restore_ssh_keys() {
 # WHAT: Restores GPG keys, AWS/gcloud/kube credentials, and npm/yarn
 # registry configs, locking down permissions the same way SSH keys are.
 # HOW: Same pattern as restore_ssh_keys, each secret is only restored if
-# its backup actually exists. GPG and AWS credential folders get
-# "chmod -R go-rwx" (strip all group/other access recursively) rather
-# than a flat "chmod 600 *", because both can contain subfolders (like
-# GPG's private-keys-v1.d) that still need their owner-execute bit to
-# stay traversable, a blanket 600 on a directory would lock the owner
-# out of it too. The kube config is a single file, so a plain 600 is enough.
+# its backup actually exists. The destination is pre-created with
+# mkdir -p and copied into with the "source/." form (same reasoning
+# as backup.sh's "source/." copies, see backup_ssh_keys): GPG, AWS CLI,
+# and gcloud CLI all auto-create their own config directory the moment
+# they're used, so it's common for "$HOME/.gnupg"/".aws"/".config/gcloud"
+# to already exist by the time this runs, e.g. if a Homebrew formula's
+# postinstall touched gpg during restore_homebrew_packages just above.
+# A bare "cp -R src dest" nests src's contents one level deeper (as
+# "dest/src_name/...") in exactly that case instead of restoring into
+# dest directly, so the restored config wouldn't be found. GPG and AWS
+# credential folders get "chmod -R go-rwx" (strip all group/other
+# access recursively) rather than a flat "chmod 600 *", because both
+# can contain subfolders (like GPG's private-keys-v1.d) that still
+# need their owner-execute bit to stay traversable, a blanket 600 on a
+# directory would lock the owner out of it too. The kube config is a
+# single file, so a plain 600 is enough.
 # WHY: These are the same category of bearer secret as an SSH key,
 # skipping them here would mean re-authenticating every cloud CLI and
 # regenerating a GPG key from scratch on every new machine.
 restore_secrets() {
     if [ -d "dotfiles/gnupg_backup" ]; then
         echo "🔐 Restoring GPG keys..."
-        cp -R dotfiles/gnupg_backup "$HOME/.gnupg"
+        copy_dir_contents "dotfiles/gnupg_backup" "$HOME/.gnupg"
         chmod -R go-rwx "$HOME/.gnupg"
     fi
 
     if [ -d "dotfiles/aws_backup" ]; then
         echo "🔐 Restoring AWS credentials..."
-        cp -R dotfiles/aws_backup "$HOME/.aws"
+        copy_dir_contents "dotfiles/aws_backup" "$HOME/.aws"
         chmod -R go-rwx "$HOME/.aws"
     fi
 
     if [ -d "dotfiles/gcloud_backup" ]; then
         echo "🔐 Restoring gcloud credentials..."
-        mkdir -p "$HOME/.config"
-        cp -R dotfiles/gcloud_backup "$HOME/.config/gcloud"
+        copy_dir_contents "dotfiles/gcloud_backup" "$HOME/.config/gcloud"
     fi
 
     if [ -f "dotfiles/kube_backup/config" ]; then

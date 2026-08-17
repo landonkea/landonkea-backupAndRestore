@@ -43,6 +43,28 @@
 # successful in the log but records almost nothing.
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$HOME/.rbenv/bin:$HOME/.pyenv/bin:$PATH"
 
+# WHAT: Copies the contents of $1 into $2 if $1 exists, creating $2 first.
+# HOW: Every "back up this whole folder" step below (SSH keys,
+# LaunchAgents, GPG, AWS, gcloud) needs the exact same two-step dance:
+# pre-create the destination, then copy the source's contents ("/.")
+# into it rather than the source folder itself. Pre-creating the
+# destination is what makes that safe to rerun against the same dated
+# BACKUP_DIR: "cp -R src dest" only behaves like a merge the first
+# time, if dest already exists (e.g. a second run today), cp nests
+# src inside it instead, one level deeper every rerun. "source/." into
+# an already-made dest avoids that regardless of how many times this
+# runs against the same folder.
+# WHY pulled out into its own function: this exact two-line dance was
+# repeated five times below with only the two paths changing, one
+# fixed and tested implementation is less to keep in sync than five
+# copies of the same reasoning.
+copy_dir_contents() {
+    local src="$1"
+    local dest="$2"
+    mkdir -p "$dest"
+    cp -R "$src/." "$dest/"
+}
+
 # =====================================================================
 # SECTION 1: SET UP THE BACKUP FOLDER
 # =====================================================================
@@ -254,8 +276,7 @@ backup_scheduled_tasks() {
 
     crontab -l > "$BACKUP_DIR/crontab.txt" 2>/dev/null || echo "No crontab found, skipping."
     if [ -d "$HOME/Library/LaunchAgents" ]; then
-        mkdir -p "$BACKUP_DIR/LaunchAgents"
-        cp -R "$HOME/Library/LaunchAgents/." "$BACKUP_DIR/LaunchAgents/"
+        copy_dir_contents "$HOME/Library/LaunchAgents" "$BACKUP_DIR/LaunchAgents"
     fi
 }
 
@@ -307,8 +328,7 @@ backup_ssh_keys() {
         # that regardless of how many times this runs against the same
         # dated folder. This is a critical backup because losing SSH keys
         # means losing secure access to your GitHub account, servers, etc.
-        mkdir -p "$BACKUP_DIR/dotfiles/ssh_backup"
-        cp -R "$HOME/.ssh/." "$BACKUP_DIR/dotfiles/ssh_backup/"
+        copy_dir_contents "$HOME/.ssh" "$BACKUP_DIR/dotfiles/ssh_backup"
     fi
 }
 
@@ -339,16 +359,13 @@ backup_secrets() {
     mkdir -p "$BACKUP_DIR/dotfiles"
 
     if [ -d "$HOME/.gnupg" ]; then
-        mkdir -p "$BACKUP_DIR/dotfiles/gnupg_backup"
-        cp -R "$HOME/.gnupg/." "$BACKUP_DIR/dotfiles/gnupg_backup/"
+        copy_dir_contents "$HOME/.gnupg" "$BACKUP_DIR/dotfiles/gnupg_backup"
     fi
     if [ -d "$HOME/.aws" ]; then
-        mkdir -p "$BACKUP_DIR/dotfiles/aws_backup"
-        cp -R "$HOME/.aws/." "$BACKUP_DIR/dotfiles/aws_backup/"
+        copy_dir_contents "$HOME/.aws" "$BACKUP_DIR/dotfiles/aws_backup"
     fi
     if [ -d "$HOME/.config/gcloud" ]; then
-        mkdir -p "$BACKUP_DIR/dotfiles/gcloud_backup"
-        cp -R "$HOME/.config/gcloud/." "$BACKUP_DIR/dotfiles/gcloud_backup/"
+        copy_dir_contents "$HOME/.config/gcloud" "$BACKUP_DIR/dotfiles/gcloud_backup"
     fi
     if [ -f "$HOME/.kube/config" ]; then
         mkdir -p "$BACKUP_DIR/dotfiles/kube_backup"
@@ -368,13 +385,17 @@ backup_secrets() {
 
 # WHAT: Deletes older Mac_Backup_* folders beyond the most recent
 # BACKUP_RETENTION_COUNT.
-# HOW: "ls -1d" lists matching folders one per line as full paths; "sort"
-# puts them in order since the date-stamped names sort chronologically as
-# plain text. macOS ships BSD head, which (unlike GNU head) has no
-# "-n -N" ("all but the last N lines") form, so the count of folders to
-# delete is computed by hand instead: total folders minus how many to
-# keep. If that comes out to zero or less (BACKUP_RETENTION_COUNT or
-# fewer folders exist), nothing runs and no deletion happens.
+# HOW: "find -print0" + "sort -z" lists matching folders NUL-delimited
+# (not newline-delimited like "ls"), so a folder name containing a
+# space or other unusual character can't be split into two array
+# entries or otherwise misparsed, this is what shellcheck's SC2012
+# flags plain "ls" piped into another command for. The date-stamped
+# names sort chronologically as plain text either way. macOS ships BSD
+# head, which (unlike GNU head) has no "-n -N" ("all but the last N
+# lines") form, so the count of folders to delete is computed by hand
+# instead: total folders minus how many to keep. If that comes out to
+# zero or less (BACKUP_RETENTION_COUNT or fewer folders exist), nothing
+# runs and no deletion happens.
 # WHY: Keeping a handful of recent backups gives a short rollback window
 # without letting unattended runs quietly consume disk space, or leave
 # an ever-growing number of directories containing copies of SSH keys,
@@ -384,15 +405,17 @@ BACKUP_RETENTION_COUNT=4
 prune_old_backups() {
     echo "🧹 Pruning old backups (keeping the $BACKUP_RETENTION_COUNT most recent)..."
 
-    local backups
-    backups=$(ls -1d "$HOME"/Mac_Backup_*/ 2>/dev/null | sort)
-    local total
-    total=$(echo "$backups" | grep -c .)
+    local -a backups=()
+    while IFS= read -r -d '' old_backup; do
+        backups+=("$old_backup")
+    done < <(find "$HOME" -maxdepth 1 -type d -name 'Mac_Backup_*' -print0 | sort -z)
+
+    local total=${#backups[@]}
     local delete_count=$((total - BACKUP_RETENTION_COUNT))
 
     if [ "$delete_count" -gt 0 ]; then
-        echo "$backups" | head -n "$delete_count" | while read -r old_backup; do
-            rm -rf "$old_backup"
+        for ((i = 0; i < delete_count; i++)); do
+            rm -rf "${backups[$i]}"
         done
     fi
 }
